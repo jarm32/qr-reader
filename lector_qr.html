@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      #reader {
+        width: 300px;
+        height: 300px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="reader"></div>
+    <div id="mensaje" style="font-size:14px; color:red;"></div>
+    <script>
+      function onScanSuccess(decodedText) {
+        // Enviar resultado a la página principal de Wix
+        window.parent.postMessage({ qr: decodedText }, "*");
+      }
+
+      const html5QrCode = new Html5Qrcode("reader");
+
+      Html5Qrcode.getCameras().then(devices => {
+        if (devices && devices.length) {
+          const camId = devices[0].id;
+          html5QrCode.start(
+            camId,
+            { fps: 10, qrbox: 250 },
+            onScanSuccess
+          ).catch(err => {
+            document.getElementById("mensaje").innerText =
+              "No se pudo iniciar la cámara: " + err;
+          });
+        } else {
+          document.getElementById("mensaje").innerText = 
+            "No se detectaron cámaras en este dispositivo.";
+        }
+      }).catch(err => {
+        document.getElementById("mensaje").innerText = 
+          "Error al obtener cámaras: " + err;
+      });
+    </script>
+  </body>
+</html>
