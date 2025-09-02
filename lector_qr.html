@@ -2,50 +2,92 @@
 <html>
   <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script src="https://unpkg.com/html5-qrcode/minified/html5-qrcode.min.js"></script>
     <style>
       body {
-        margin: 0;
-        padding: 0;
-        display: flex;
-        justify-content: center;
-        align-items: center;
+        margin: 0; padding: 0;
+        min-height: 100vh;
+        display: flex; flex-direction: column;
+        justify-content: center; align-items: center;
+        font-family: system-ui, sans-serif;
       }
-      #reader {
-        width: 300px;
-        height: 300px;
-      }
+      #reader { width: 320px; height: 320px; }
+      #mensaje { font-size: 14px; color: #cc0000; margin-top: 8px; text-align: center; }
+      #selector { margin: 10px 0; }
     </style>
   </head>
   <body>
+    <div id="selector"></div>
     <div id="reader"></div>
-    <div id="mensaje" style="font-size:14px; color:red;"></div>
+    <div id="mensaje"></div>
+
     <script>
-      function onScanSuccess(decodedText) {
-        // Enviar resultado a la página principal de Wix
-        window.parent.postMessage({ qr: decodedText }, "*");
+      // Si nos abren con ?return=<URL>, al escanear redirigimos de vuelta con ?qr=...
+      function getParam(name) {
+        return new URLSearchParams(location.search).get(name);
+      }
+      const returnUrl = getParam("return");
+
+      function handleDecoded(decodedText) {
+        if (returnUrl) {
+          const sep = returnUrl.includes("?") ? "&" : "?";
+          location.href = `${returnUrl}${sep}qr=${encodeURIComponent(decodedText)}`;
+        } else {
+          // Embebido: avisamos al padre (Wix)
+          window.parent?.postMessage({ qr: decodedText }, "*");
+        }
       }
 
       const html5QrCode = new Html5Qrcode("reader");
 
+      // Intentamos usar la cámara trasera si existe
       Html5Qrcode.getCameras().then(devices => {
-        if (devices && devices.length) {
-          const camId = devices[0].id;
+        if (!devices || !devices.length) {
+          document.getElementById("mensaje").innerText = "No se detectaron cámaras.";
+          return;
+        }
+
+        // Construimos un selector para elegir cámara (útil si hay frontal/trasera)
+        const selWrap = document.getElementById("selector");
+        const select = document.createElement("select");
+        select.id = "cameraSelect";
+        devices.forEach((d, idx) => {
+          const opt = document.createElement("option");
+          opt.value = d.id;
+          opt.textContent = d.label || `Cámara ${idx + 1}`;
+          select.appendChild(opt);
+        });
+        selWrap.appendChild(select);
+
+        // Heurística: si hay más de una, intenta la última (suele ser la trasera)
+        let defaultId = devices[devices.length - 1].id;
+
+        function start(camId) {
           html5QrCode.start(
             camId,
             { fps: 10, qrbox: 250 },
-            onScanSuccess
+            (decodedText) => handleDecoded(decodedText),
+            // errores de escaneo: silenciamos para no saturar
+            () => {}
           ).catch(err => {
-            document.getElementById("mensaje").innerText =
-              "No se pudo iniciar la cámara: " + err;
+            document.getElementById("mensaje").innerText = "No se pudo iniciar la cámara: " + err;
           });
-        } else {
-          document.getElementById("mensaje").innerText = 
-            "No se detectaron cámaras en este dispositivo.";
         }
+
+        // Arranca con la preseleccionada
+        select.value = defaultId;
+        start(defaultId);
+
+        // Permite cambiar de cámara
+        select.addEventListener("change", async (e) => {
+          try { await html5QrCode.stop(); } catch(e) {}
+          document.getElementById("mensaje").innerText = "";
+          start(e.target.value);
+        });
+
       }).catch(err => {
-        document.getElementById("mensaje").innerText = 
-          "Error al obtener cámaras: " + err;
+        document.getElementById("mensaje").innerText = "Error al obtener cámaras: " + err;
       });
     </script>
   </body>
